@@ -1,16 +1,4 @@
-"""
-Генерация синтетического датасета продаж аптечной сети «ФармаПлюс».
-
-Данные содержат встроенные закономерности для проверки статистических гипотез:
-- различия среднего чека по полу покупателя;
-- рост выручки после промо-кампании;
-- различия выручки по категориям товаров;
-- связь способа оплаты с возрастной группой;
-- обратная корреляция цены и количества;
-- большая доля онлайн-заказов в Москве.
-"""
-
-from __future__ import annotations
+"""Генерация датасета продаж аптечной сети (учебный проект)."""
 
 import argparse
 from pathlib import Path
@@ -21,18 +9,55 @@ import pandas as pd
 RANDOM_SEED = 42
 
 REGIONS = {
-    "Москва": {"stores": 8, "online_share": 0.38},
-    "Санкт-Петербург": {"stores": 5, "online_share": 0.22},
-    "Казань": {"stores": 3, "online_share": 0.15},
-    "Новосибирск": {"stores": 3, "online_share": 0.14},
-    "Екатеринбург": {"stores": 3, "online_share": 0.16},
+    "Москва": {"stores": 8},
+    "Санкт-Петербург": {"stores": 5},
+    "Казань": {"stores": 3},
+    "Новосибирск": {"stores": 3},
+    "Екатеринбург": {"stores": 3},
 }
 
 CATEGORIES = {
-    "Лекарства (рецепт)": {"base_price": 420, "margin": 0.18, "daily_qty": 2.8},
-    "Лекарства (без рецепта)": {"base_price": 280, "margin": 0.25, "daily_qty": 4.5},
-    "Косметика и гигиена": {"base_price": 350, "margin": 0.32, "daily_qty": 3.2},
-    "БАД и витамины": {"base_price": 520, "margin": 0.35, "daily_qty": 2.1},
+    "Лекарства (рецепт)": {
+        "base_price": 420,
+        "margin": 0.18,
+        "daily_qty": 2.8,
+        "names": [
+            "Амоксициллин 500 мг", "Омепразол 20 мг", "Аторвастатин 10 мг",
+            "Лозартан 50 мг", "Метформин 850 мг", "Амлодипин 5 мг",
+            "Эналаприл 10 мг", "Бисопролол 5 мг", "Панангин", "Вальсартан 80 мг",
+        ],
+    },
+    "Лекарства (без рецепта)": {
+        "base_price": 280,
+        "margin": 0.25,
+        "daily_qty": 4.5,
+        "names": [
+            "Нурофен 200 мг", "Цитрамон", "Парацетамол 500 мг", "Ибупрофен",
+            "Терафлю", "Смекта", "Мезим", "Активированный уголь", "Но-шпа",
+            "Анальгин", "Аспирин", "Ринза", "Гриппферон", "Лоратадин",
+        ],
+    },
+    "Косметика и гигиена": {
+        "base_price": 350,
+        "margin": 0.32,
+        "daily_qty": 3.2,
+        "names": [
+            "La Roche-Posay крем", "Bioderma Sensibio", "Nivea увлажняющий крем",
+            "Colgate Total", "Head & Shoulders 400 мл", "Дезодорант Rexona",
+            "Прокладки Always", "Подгузники Pampers", "Зубная паста Splat",
+            "Шампунь Gliss Kur", "Мицеллярная вода", "Крем для рук",
+        ],
+    },
+    "БАД и витамины": {
+        "base_price": 520,
+        "margin": 0.35,
+        "daily_qty": 2.1,
+        "names": [
+            "Омега-3 1000 мг", "Витамин D3 2000 МЕ", "Магний B6",
+            "Компливит", "Аевит", "Рыбий жир", "Кальций D3", "Селен",
+            "Цинк", "Витамин C 1000 мг", "Глюкозамин", "Коэнзим Q10",
+        ],
+    },
 }
 
 PAYMENT_METHODS = ["Наличные", "Карта", "Онлайн"]
@@ -40,60 +65,56 @@ GENDERS = ["Женский", "Мужской"]
 AGE_GROUPS = ["18-30", "31-45", "46-60", "60+"]
 
 
-def generate_products(rng: np.random.Generator) -> pd.DataFrame:
+def generate_products(rng):
     rows = []
     product_id = 1
     for category, params in CATEGORIES.items():
-        n_products = rng.integers(18, 28)
-        for _ in range(n_products):
+        names = params["names"]
+        n_products = rng.integers(max(15, len(names)), max(20, len(names) + 8))
+        for i in range(n_products):
             price = max(45, rng.normal(params["base_price"], params["base_price"] * 0.25))
-            rows.append(
-                {
-                    "product_id": product_id,
-                    "product_name": f"{category.split()[0]} #{product_id}",
-                    "category": category,
-                    "price": round(price, 2),
-                    "margin_pct": round(params["margin"] + rng.normal(0, 0.03), 3),
-                }
-            )
+            rows.append({
+                "product_id": product_id,
+                "product_name": names[i % len(names)],
+                "category": category,
+                "price": round(price, 2),
+                "margin_pct": round(params["margin"] + rng.normal(0, 0.03), 3),
+            })
             product_id += 1
     return pd.DataFrame(rows)
 
 
-def choose_payment(
-    rng: np.random.Generator,
-    region: str,
-    age_group: str,
-) -> str:
-    online_boost = 0.25 if region == "Москва" else 0.0
-    young_boost = 0.18 if age_group == "18-30" else 0.0
-    elderly_penalty = 0.12 if age_group == "60+" else 0.0
+def pick_payment(rng, region, age_group):
+    # базовые доли: наличные / карта / онлайн
+    probs = [0.22, 0.48, 0.30]
 
-    probs = np.array([0.22, 0.48, 0.30], dtype=float)
-    probs[2] += online_boost + young_boost - elderly_penalty
-    probs[0] += elderly_penalty * 0.6
-    probs[1] -= (online_boost + young_boost) * 0.5
+    if region == "Москва":
+        probs[2] += 0.25
+        probs[1] -= 0.12
+    if age_group == "18-30":
+        probs[2] += 0.18
+        probs[0] -= 0.10
+    if age_group == "60+":
+        probs[0] += 0.12
+        probs[2] -= 0.10
+
     probs = np.clip(probs, 0.05, None)
-    probs /= probs.sum()
+    probs = probs / sum(probs)
     return rng.choice(PAYMENT_METHODS, p=probs)
 
 
-def generate_transactions(
-    products: pd.DataFrame,
-    rng: np.random.Generator,
-    n_days: int = 180,
-) -> pd.DataFrame:
+def generate_transactions(products, rng, n_days=180):
     start_date = pd.Timestamp("2025-01-01")
     promo_start = start_date + pd.Timedelta(days=90)
     promo_end = promo_start + pd.Timedelta(days=21)
 
-    store_meta = []
+    stores = []
     store_id = 1
     for region, meta in REGIONS.items():
         for _ in range(meta["stores"]):
-            store_meta.append({"store_id": store_id, "region": region})
+            stores.append({"store_id": store_id, "region": region})
             store_id += 1
-    stores_df = pd.DataFrame(store_meta)
+    stores_df = pd.DataFrame(stores)
 
     rows = []
     transaction_id = 1
@@ -101,55 +122,62 @@ def generate_transactions(
     for day_offset in range(n_days):
         current_date = start_date + pd.Timedelta(days=day_offset)
         is_promo = promo_start <= current_date <= promo_end
-        weekday = current_date.weekday()
-        weekend_boost = 1.12 if weekday >= 5 else 1.0
-        promo_boost = 1.18 if is_promo else 1.0
+        is_weekend = current_date.weekday() >= 5
 
-        daily_transactions = int(rng.poisson(95 * weekend_boost * promo_boost))
+        traffic = 95
+        if is_weekend:
+            traffic *= 1.12
+        if is_promo:
+            traffic *= 1.18
 
-        for _ in range(daily_transactions):
+        for _ in range(int(rng.poisson(traffic))):
             store = stores_df.sample(1, random_state=rng.integers(0, 1_000_000)).iloc[0]
-            product = products.sample(1, weights=1 / products["price"], random_state=rng.integers(0, 1_000_000)).iloc[0]
+            product = products.sample(
+                1, weights=1 / products["price"],
+                random_state=rng.integers(0, 1_000_000),
+            ).iloc[0]
 
             gender = rng.choice(GENDERS, p=[0.58, 0.42])
             age_group = rng.choice(AGE_GROUPS, p=[0.22, 0.31, 0.27, 0.20])
 
-            base_qty = CATEGORIES[product["category"]]["daily_qty"]
-            price_effect = 1.4 - min(product["price"] / 900, 0.9)
-            qty = max(1, int(rng.poisson(base_qty * price_effect)))
+            cat_params = CATEGORIES[product["category"]]
+            qty_base = cat_params["daily_qty"]
+            # чем дороже позиция, тем меньше штук в среднем берут
+            qty = max(1, int(rng.poisson(qty_base * (1.4 - min(product["price"] / 900, 0.9)))))
 
-            gender_check_boost = 1.08 if gender == "Женский" else 1.0
+            # в косметике и БАД чек чуть выше — чаще берут несколько позиций
+            if product["category"] in ("Косметика и гигиена", "БАД и витамины") and gender == "Женский":
+                qty = max(qty, qty + rng.integers(0, 2))
+
             discount = 0.0
             if is_promo and rng.random() < 0.35:
-                discount = rng.choice([0.05, 0.10, 0.15])
+                discount = float(rng.choice([0.05, 0.10, 0.15]))
 
-            amount = round(product["price"] * qty * gender_check_boost * (1 - discount), 2)
-            payment = choose_payment(rng, store["region"], age_group)
+            amount = round(product["price"] * qty * (1 - discount), 2)
+            payment = pick_payment(rng, store["region"], age_group)
 
-            rows.append(
-                {
-                    "transaction_id": transaction_id,
-                    "date": current_date,
-                    "store_id": int(store["store_id"]),
-                    "region": store["region"],
-                    "product_id": int(product["product_id"]),
-                    "category": product["category"],
-                    "price": product["price"],
-                    "quantity": qty,
-                    "discount_pct": discount,
-                    "amount": amount,
-                    "gender": gender,
-                    "age_group": age_group,
-                    "payment_method": payment,
-                    "is_promo_period": int(is_promo),
-                }
-            )
+            rows.append({
+                "transaction_id": transaction_id,
+                "date": current_date,
+                "store_id": int(store["store_id"]),
+                "region": store["region"],
+                "product_id": int(product["product_id"]),
+                "category": product["category"],
+                "price": product["price"],
+                "quantity": qty,
+                "discount_pct": discount,
+                "amount": amount,
+                "gender": gender,
+                "age_group": age_group,
+                "payment_method": payment,
+                "is_promo_period": int(is_promo),
+            })
             transaction_id += 1
 
     return pd.DataFrame(rows)
 
 
-def main(output_dir: Path) -> None:
+def main(output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(RANDOM_SEED)
 
@@ -166,11 +194,11 @@ def main(output_dir: Path) -> None:
     )
     daily_revenue.to_csv(output_dir / "daily_revenue.csv", index=False, encoding="utf-8-sig")
 
-    print(f"Сохранено {len(products)} товаров и {len(transactions)} транзакций в {output_dir}")
+    print(f"Готово: {len(products)} товаров, {len(transactions)} транзакций -> {output_dir}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Генерация данных аптечной сети")
-    parser.add_argument("--output", type=Path, default=Path("data"), help="Папка для CSV")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=Path("data"))
     args = parser.parse_args()
     main(args.output)
